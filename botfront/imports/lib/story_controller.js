@@ -74,7 +74,7 @@ export class StoryController {
         if (!this.hasInvalidChars(this.response)) {
             this.domain.actions.add(this.response);
             this.domain.templates[this.response] = '';
-            this.lines[this.idx].gui = { type: 'bot', name: this.response };
+            this.lines[this.idx].gui = { type: 'bot', data: { name: this.response } };
         }
     };
 
@@ -82,7 +82,7 @@ export class StoryController {
         this.form = null;
         if (!this.hasInvalidChars(this.response)) {
             this.domain.actions.add(this.response);
-            this.lines[this.idx].gui = { type: 'action', name: this.response };
+            this.lines[this.idx].gui = { type: 'action', data: { name: this.response } };
         }
     };
 
@@ -90,7 +90,7 @@ export class StoryController {
         this.form = this.response;
         if (!this.hasInvalidChars(this.response)) {
             this.domain.forms.add(this.response);
-            this.lines[this.idx].gui = { type: 'form_decl', name: this.response };
+            this.lines[this.idx].gui = { type: 'form_decl', data: { name: this.response } };
         }
     };
 
@@ -108,7 +108,7 @@ export class StoryController {
             this.raiseStoryException('declare_form');
         } else {
             this.form = null;
-            this.lines[this.idx].gui = { type: 'form', name: props.name };
+            this.lines[this.idx].gui = { type: 'form', data: { name: props.name } };
         }
     };
 
@@ -130,7 +130,7 @@ export class StoryController {
         else if (slot.type === 'text' && typeof slotValue !== 'string') this.raiseStoryException('text_slot');
         else if (slot.type === 'float' && typeof slotValue !== 'number') this.raiseStoryException('float_slot');
         else if (slot.type === 'categorical' && !slot.values.includes(slotValue)) this.raiseStoryException('cat_slot');
-        else this.lines[this.idx].gui = { type: 'slot', name: slotName, value: slotValue };
+        else this.lines[this.idx].gui = { type: 'slot', data: { name: slotName, type: slot.type, slotValue } };
     };
 
     exceptionMessages = {
@@ -223,6 +223,43 @@ export class StoryController {
             }
         }
     };
+
+    toMd = (line) => {
+        try {
+            if (['action', 'bot'].includes(line.type)) return `    - ${line.data.name}`;
+            if (line.type === 'slot') return `    - slot{"${line.data.name}": "${line.data.slotValue}"}`;
+            if (line.type === 'user') {
+                const disjuncts = line.data.map((d) => {
+                    const entities = d.entities.map(({ entity, value }) => `"${entity}": "${value}"`).join(', ');
+                    return `${d.intent}{${entities}}`;
+                });
+                return `* ${disjuncts.join(' OR ')}`;
+            }
+        } catch (e) { return false; }
+        return false;
+    }
+
+    generateMdLine = (i, content) => {
+        const mdContent = this.toMd(content);
+        if (!mdContent) throw new Error(`Error translating line ${i} to Markdown.`);
+        return { gui: content, md: this.toMd(content) };
+    }
+
+    deleteLine = (i) => {
+        this.lines = [...this.lines.slice(0, i), ...this.lines.slice(i + 1)];
+    };
+
+    insertLine = (i, content) => {
+        this.lines = [...this.lines.slice(0, i + 1), this.generateMdLine(i, content), ...this.lines.slice(i + 1)];
+    };
+
+    replaceLine = (i, content) => {
+        this.lines = [...this.lines.slice(0, i), this.generateMdLine(i, content), ...this.lines.slice(i + 1)];
+    };
+
+    getPossibleInsertions = (i) => {
+        // placeholder for future method
+    }
 
     extractDomain = () => {
         const errors = this.exceptions.filter(exception => exception.type === 'error');
