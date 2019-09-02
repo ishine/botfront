@@ -8,20 +8,16 @@ import fs from 'fs';
 import { promisify } from 'util';
 import path from 'path';
 import {
-    getAxiosError, getModelIdsFromProjectId, getProjectModelLocalFolder, getProjectModelLocalPath, getProjectModelFileName,
+    getAxiosError, getModelIdsFromProjectId, getProjectModelLocalFolder, getProjectModelFileName,
 } from '../../lib/utils';
 import { GlobalSettings } from '../globalSettings/globalSettings.collection';
 import ExampleUtils from '../../ui/components/utils/ExampleUtils';
 import { NLUModels } from '../nlu_model/nlu_model.collection';
-import { extractDomain } from '../../lib/story_validation.js';
-import { Stories } from '../story/stories.collection';
 import { Instances } from './instances.collection';
-import { Slots } from '../slots/slots.collection';
 import { CorePolicies } from '../core_policies';
 import { Evaluations } from '../nlu_evaluation';
-import { StoryGroups } from '../storyGroups/storyGroups.collection';
 import { ActivityCollection } from '../activity';
-import { checkStoryNotEmpty } from '../story/stories.methods';
+import { getStoriesAndDomain } from '../../lib/story.utils';
 
 export const createInstance = async (project) => {
     if (!Meteor.isServer) throw Meteor.Error(401, 'Not Authorized');
@@ -93,56 +89,6 @@ const getTrainingDataInRasaFormat = (model, withSynonyms = true, intents = [], w
     const gazette = withGazette && model.training_data.fuzzy_gazette ? model.training_data.fuzzy_gazette.map(copyAndFilter) : [];
 
     return { rasa_nlu_data: { common_examples, entity_synonyms, gazette } };
-};
-
-export const getStoriesAndDomain = (projectId) => {
-    const { policies } = yaml.safeLoad(
-        CorePolicies.findOne({ projectId }, { policies: 1 }).policies,
-    );
-    const mappingTriggers = policies
-        .filter(policy => policy.name.includes('BotfrontMappingPolicy'))
-        .map(policy => policy.triggers.map((trigger) => {
-            if (!trigger.extra_actions) return [trigger.action];
-            return [...trigger.extra_actions, trigger.action];
-        }))
-        .reduce((coll, curr) => coll.concat(curr), [])
-        .reduce((coll, curr) => coll.concat(curr), []);
-    const mappingStory = mappingTriggers.length
-        ? `* mapping_intent\n - ${mappingTriggers.join('\n  - ')}`
-        : '';
-    const storyGroupsIds = StoryGroups.find(
-        { projectId, selected: true },
-        { fields: { _id: 1 } },
-    )
-        .fetch()
-        .map(storyGroup => storyGroup._id);
-
-    let stories;
-
-    if (storyGroupsIds.length > 0) {
-        stories = Stories.find(
-            { projectId, storyGroupId: { $in: storyGroupsIds } },
-            { fields: { story: 1, title: 1 } },
-        ).fetch();
-    } else {
-        stories = Stories.find({ projectId }, { fields: { story: 1, title: 1 } }).fetch();
-    }
-
-    const storiesForRasa = [
-        `## mapping_story\n${mappingStory}`,
-        ...stories
-            .filter(checkStoryNotEmpty)
-            .map(story => `## ${story.title}\n${story.story}`),
-    ];
-    const storiesForDomain = mappingStory.length
-        ? [mappingStory, ...stories.map(story => story.story || '')]
-        : stories.map(story => story.story || '');
-
-    const slots = Slots.find({ projectId }).fetch();
-    return {
-        stories: storiesForRasa.join('\n'),
-        domain: extractDomain(storiesForDomain, slots),
-    };
 };
 
 if (Meteor.isServer) {
@@ -254,6 +200,7 @@ if (Meteor.isServer) {
                     try {
                         await promisify(fs.writeFile)(trainedModelPath, trainingResponse.data, 'binary');
                     } catch (e) {
+                        // eslint-disable-next-line no-console
                         console.log(`Could not save trained model to ${trainedModelPath}:${e}`);
                     }
                     

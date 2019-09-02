@@ -1,4 +1,5 @@
 import { check, Match } from 'meteor/check';
+import { safeLoad as yamlLoad } from 'js-yaml';
 import { Projects } from './project.collection';
 import { NLUModels } from '../nlu_model/nlu_model.collection';
 import { createInstance } from '../instances/instances.methods';
@@ -11,28 +12,15 @@ import { Endpoints } from '../endpoints/endpoints.collection';
 import { Credentials, createCredentials } from '../credentials';
 import { createDeployment } from '../deployment/deployment.methods';
 import { Deployments } from '../deployment/deployment.collection';
-import { createIntroStoryGroup } from '../storyGroups/storyGroups.methods';
+import { createIntroStoryGroup, createDefaultStoryGroup } from '../storyGroups/storyGroups.methods';
 import { StoryGroups } from '../storyGroups/storyGroups.collection';
 import { Stories } from '../story/stories.collection';
 import { Slots } from '../slots/slots.collection';
-import { StoryValidator } from '../../lib/story_validation';
+import { extractDomain } from '../../lib/story_controller';
+import { flattenStory } from '../../lib/story.utils';
 
 if (Meteor.isServer) {
-    export const extractDomainFromStories = (stories) => {
-        let domains = stories.map((story) => {
-            const val = new StoryValidator(story);
-            val.validateStories();
-            return val.extractDomain();
-        });
-        domains = domains.reduce((d1, d2) => ({
-            entities: new Set([...d1.entities, ...d2.entities]),
-            intents: new Set([...d1.intents, ...d2.intents]),
-        }));
-        return {
-            intents: domains.intents,
-            entities: domains.entities,
-        };
-    };
+    export const extractDomainFromStories = (stories, slots) => yamlLoad(extractDomain(stories, slots));
 
     export const extractData = (models) => {
         const trainingExamples = models.map(model => model.training_data.common_examples);
@@ -84,6 +72,7 @@ if (Meteor.isServer) {
                 createCredentials({ _id, ...item });
                 createPolicies({ _id, ...item });
                 createIntroStoryGroup(_id);
+                createDefaultStoryGroup(_id);
                 const instance = await createInstance({ _id, ...item });
                 Projects.update({ _id }, { $set: { instance } });
                 return _id;
@@ -159,10 +148,16 @@ if (Meteor.isServer) {
 
             try {
                 const stories = await Meteor.callWithPromise('stories.getStories', projectId);
+                const slots = Slots.find({ projectId }).fetch();
                 const {
-                    intents: intentSetFromDomain = new Set(),
-                    entities: entitiesSetFromDomain = new Set(),
-                } = stories.length !== 0 ? extractDomainFromStories(stories.map(story => story.story || '')) : {};
+                    intents: intentSetFromDomain = [],
+                    entities: entitiesSetFromDomain = [],
+                } = stories.length !== 0 ? extractDomainFromStories(
+                    stories
+                        .reduce((acc, story) => [...acc, ...flattenStory(story)], [])
+                        .map(story => story.story || ''),
+                    slots,
+                ) : {};
                 const {
                     intents: intentSetFromTraining,
                     entities: entitiesSetFromTraining,

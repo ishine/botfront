@@ -1,5 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { check } from 'meteor/check';
+import { traverseStory } from '../../lib/story.utils';
 
 import { Stories } from './stories.collection';
 
@@ -13,7 +14,19 @@ Meteor.methods({
 
     'stories.update'(story) {
         check(story, Object);
-        return Stories.update({ _id: story._id }, { $set: story });
+        const { _id, path, ...rest } = story;
+        const { indices } = path
+            ? traverseStory(Stories.findOne({ _id: story._id }), path)
+            : { indices: [] };
+        const update = indices.length
+            ? Object.assign(
+                {},
+                ...Object.keys(rest).map(key => (
+                    { [`branches.${indices.join('.branches.')}.${key}`]: rest[key] }
+                )),
+            )
+            : rest;
+        return Stories.update({ _id }, { $set: update });
     },
 
     'stories.delete'(story) {
