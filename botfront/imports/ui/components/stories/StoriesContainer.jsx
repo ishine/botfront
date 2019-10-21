@@ -14,11 +14,13 @@ import moment from 'moment';
 
 import { StoryGroups } from '../../../api/storyGroups/storyGroups.collection';
 import { Instances } from '../../../api/instances/instances.collection';
+import { Stories as StoriesData } from '../../../api/story/stories.collection';
 import { isTraining } from '../../../api/nlu_model/nlu_model.utils';
 import { Projects } from '../../../api/project/project.collection';
 import { Slots } from '../../../api/slots/slots.collection';
 import TrainButton from '../utils/TrainButton';
 import { PageMenu } from '../utils/Utils';
+import { ConversationOptionsContext } from '../utils/Context';
 
 const Stories = React.lazy(() => import('./Stories'));
 const SlotsEditor = React.lazy(() => import('./Slots'));
@@ -32,8 +34,8 @@ function StoriesContainer(props) {
         instance,
         project: { training: { endTime, status } = {} },
         project,
+        stories,
     } = props;
-
     const [activeItem, setActiveItem] = useState('stories');
 
     function RenderPlaceHolder() {
@@ -54,9 +56,16 @@ function StoriesContainer(props) {
             </Placeholder>
         );
     }
-
-    return (
-        <>
+    
+    const renderStoriesContainer = () => (
+        <ConversationOptionsContext.Provider
+            value={{
+                templates: [...project.templates],
+                slots,
+                stories,
+                storyGroups,
+            }}
+        >
             <PageMenu title='Stories' icon='book'>
                 <Menu.Menu position='right'>
                     <Menu.Item>
@@ -127,6 +136,7 @@ function StoriesContainer(props) {
                         active={activeItem === 'stories'}
                         name='stories'
                         onClick={() => setActiveItem('stories')}
+                        data-cy='stories-tab'
                     >
                         Stories
                     </Menu.Item>
@@ -161,8 +171,10 @@ function StoriesContainer(props) {
                     </React.Suspense>
                 )}
             </Container>
-        </>
+        </ConversationOptionsContext.Provider>
     );
+
+    return (renderStoriesContainer());
 }
 
 StoriesContainer.propTypes = {
@@ -173,22 +185,24 @@ StoriesContainer.propTypes = {
 };
 
 const mapStateToProps = state => ({
-    projectId: state.get('projectId'),
+    projectId: state.settings.get('projectId'),
 });
 
 const StoriesWithState = connect(mapStateToProps)(StoriesContainer);
 
 export default withTracker((props) => {
     const { project_id: projectId } = props.params;
+    const storiesHandler = Meteor.subscribe('stories.light', projectId);
     const storyGroupsHandler = Meteor.subscribe('storiesGroup', projectId);
     const projectsHandler = Meteor.subscribe('projects', projectId);
     const instancesHandler = Meteor.subscribe('nlu_instances', projectId);
     const slotsHandler = Meteor.subscribe('slots', projectId);
-    const { training } = Projects.findOne(
+    const { training, templates } = Projects.findOne(
         { _id: projectId },
         {
             fields: {
                 training: 1,
+                'templates.key': 1,
             },
         },
     );
@@ -197,6 +211,7 @@ export default withTracker((props) => {
     const project = {
         _id: projectId,
         training,
+        templates,
     };
 
     return {
@@ -204,10 +219,12 @@ export default withTracker((props) => {
             storyGroupsHandler.ready()
             && projectsHandler.ready()
             && instancesHandler.ready()
-            && slotsHandler.ready(),
+            && slotsHandler.ready()
+            && storiesHandler.ready(),
         storyGroups: StoryGroups.find({}).fetch(),
         slots: Slots.find({}).fetch(),
         instance,
         project,
+        stories: StoriesData.find({}).fetch(),
     };
 })(StoriesWithState);

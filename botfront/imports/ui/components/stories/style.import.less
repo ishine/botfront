@@ -58,23 +58,45 @@
 }
 
 .ui.vertical.menu.intro-story {
-  border-color: rgb(33,133,208);
-  border-width: 2px;
-  span {
-    color: rgb(33,133,208);
-  }
+  border-width: 1px;
+  border-radius: 5px;
 }
 
 .story-editor {
   margin-bottom: 20px;
   .ui.attached.menu.top {
+    &.collapsed {
+      border-radius: 0.3em;
+    }
     border-color: #eeeeee;
     .item {
       padding: 0px 16px;
     }
 
-    .header {
+    .icon.triangle.right {
+      margin-left: 0;
+      margin-right: 10px;
+      transition: transform 0.2s ease-in-out;
+      &.opened {
+        transform: rotate(90deg);
+      }
+    }
+    .trash{
+      color:#767676;
+      &:hover{
+        color: #5c5c5c;
+        cursor: pointer;
+      }
+      &.disabled{
+        color: #767676;
+        &:hover{
+          color: #767676;
+          // cursor: not-allowed;
+        }
+      }
+    }
 
+    .header {
       input {
         margin: 0 5px;
         border-style: solid;
@@ -101,7 +123,7 @@
 
     .story-title-prefix {
       opacity: 0.4;
-      margin-right: 8px;
+      margin-right: 0;
     }
 
     //removes borders b/w menu items
@@ -122,7 +144,7 @@
       margin: 0;
       flex-wrap: wrap;
       min-height: 0;
-      background-color: screen(@blue, #eeeeee);
+      background-color: #f8fbfd;
       a.item {
         padding: 0.25rem 0.5rem;
         white-space: nowrap;
@@ -131,7 +153,7 @@
 
         &.active {
           border-color: @blue;
-          background-color: screen(@blue, #cccccc);
+          background-color: #f0f3f5;
         }
         &:active, &:hover:not(.active) {
           background-color: screen(@blue, #dddddd);
@@ -151,7 +173,7 @@
         input {
           outline: none;
           border: solid 1px screen(@blue, #666666);
-          background-color: screen(@blue, #eeeeee);
+          background-color: #ffffff;
           border-radius: 4px;
           padding: 1px;
           color: rgba(0,0,0,.87);
@@ -167,7 +189,7 @@
           max-width: 20ch;
           &.decorated {
             border: solid 1px screen(@blue, #999999);
-            background-color: screen(@blue, #eeeeee);
+            background-color: #ffffff;
             border-radius: 4px;
             padding: 2px 7px 2px 1px;
           }
@@ -176,11 +198,12 @@
           color: rgba(0,0,0,0.4);
           padding: 0 10px;
           margin: 0;
-          opacity: 0;
+          visibility: hidden;
         }
         &.active:hover {
           .trash {
             opacity: 1;
+            visibility: visible;
           }
         }
       }
@@ -188,6 +211,9 @@
 
     &.bottom {
       background-color: #eeeeee;
+      &.linked {
+        background-color: rgba(0, 181, 173, 0.06);
+      }
     }
   }
 }
@@ -274,8 +300,11 @@
   padding: 0px;
   padding-left: 1em;
   background-color: #00000005;
-  color: rgba(0,0,0,0.4);
-  .ui.mini.menu{
+  color: rgba(0, 0, 0, 0.4);
+  &.linked {
+    color: #666666;
+  }
+    .ui.mini.menu {
     margin-top: 0px;
     margin-left: 1em;
     border-style: none;
@@ -287,7 +316,9 @@
       background-color: rgba(0,0,0,0);
       border-style: none;
       border-radius: 0px;
-      &:hover{
+      padding-top: 0;
+      padding-bottom: 0;
+      &:hover {
         background-color: rgba(0, 0, 0, 0.02);
       }
       &.color-grey{
@@ -323,4 +354,63 @@
 
 .ui.attached.segment.single-story-container{
   border-bottom-style: none;
+}
+
+
+.ui.red.label.exception-label{
+  .times.circle.icon{
+    padding-left: 0px;
+    margin-left: 0px;
+    margin-right: 0.5em;
+  }
+  padding: 0px;
+}
+.ui.yellow.label.exception-label{
+  .exclamation.circle.icon{
+    padding-left: 0px;
+    margin-left: 0px;
+    margin-right: 0.5em;
+  }
+  padding: 0px;
+}
+
+.ui.tiny.warning.attached.message.connected-story-alert{
+  padding: 0.75em;
+  box-shadow: none;
+  border-style: solid;
+  border-color: rgb(238, 238, 238);
+  border-width: 1px;
+}
+
+
+.ui.popup.connected-stories-popup{
+    padding: 13px 17px;
+    text-align: left;
+    overflow-y: auto;
+    max-height: 200px;
+    min-width: 250px;
+    .ui.header {
+      margin-bottom: 4px;
+      margin-top: 0em;
+    }
+    .story-title-prefix{
+      opacity: 0.4;
+      margin-right: 0.25em;
+      
+    }
+    .title-list-elem{
+      margin-top: 0px;
+      margin-bottom: 1px;
+      
+    & + .ui.header{
+      margin-bottom: 4px;
+      margin-top: 1em;
+    }
+  }
+}
+.ui.warning.attached.message.connected-story-alert{
+  &:hover{
+    cursor: pointer;
+    background-color: #fff8ef
+  }
 }

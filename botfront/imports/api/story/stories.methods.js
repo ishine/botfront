@@ -15,9 +15,10 @@ Meteor.methods({
     'stories.update'(story) {
         check(story, Object);
         const { _id, path, ...rest } = story;
-        const { indices } = path
-            ? traverseStory(Stories.findOne({ _id: story._id }), path)
-            : { indices: [] };
+        if (!path) {
+            return Stories.update({ _id }, { $set: { ...rest } });
+        }
+        const { indices } = traverseStory(Stories.findOne({ _id: story._id }), path);
         const update = indices.length
             ? Object.assign(
                 {},
@@ -37,5 +38,22 @@ Meteor.methods({
     'stories.getStories'(projectId) {
         check(projectId, String);
         return Stories.find({ projectId }).fetch();
+    },
+
+    'stories.addCheckpoints'(destinationStory, branchPath) {
+        check(destinationStory, String);
+        check(branchPath, Array);
+        return Stories.update(
+            { _id: destinationStory },
+            { $addToSet: { checkpoints: branchPath } },
+        );
+    },
+    'stories.removeCheckpoints'(destinationStory, branchPath) {
+        check(destinationStory, String);
+        check(branchPath, Array);
+        return Stories.update(
+            { _id: destinationStory },
+            { $pullAll: { checkpoints: [branchPath] } },
+        );
     },
 });

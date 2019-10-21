@@ -171,7 +171,7 @@ class TemplatesTable extends React.Component {
                 Header: 'Key',
                 filterable: true,
                 filterMethod: (filter, rows) => matchSorter(rows, filter.value, { keys: ['key'] }),
-                Cell: props => <div><Label horizontal basic size='tiny'>{props.value}</Label></div>,
+                Cell: props => <div data-cy='template-intent'><Label horizontal basic size='tiny'>{props.value}</Label></div>,
                 filterAll: true,
                 width: 200,
             });
@@ -322,11 +322,11 @@ TemplatesTable.defaultProps = {
 };
 
 const mapStateToProps = state => ({
-    projectId: state.get('projectId'),
-    pageNumber: state.get('templatesTablePage'),
-    filterText: state.get('templatesTableFilter'),
-    workingLanguage: state.get('workingLanguage'),
-    showMatchingCriteria: state.get('templatesTableShowMatching'),
+    projectId: state.settings.get('projectId'),
+    pageNumber: state.settings.get('templatesTablePage'),
+    filterText: state.settings.get('templatesTableFilter'),
+    workingLanguage: state.settings.get('workingLanguage'),
+    showMatchingCriteria: state.settings.get('templatesTableShowMatching'),
 });
 
 const mapDispatchToProps = {

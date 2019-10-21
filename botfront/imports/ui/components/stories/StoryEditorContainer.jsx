@@ -1,20 +1,38 @@
-import {
-    Icon, Segment, Menu,
-} from 'semantic-ui-react';
 import React, { useState, useContext, useEffect } from 'react';
+import { Icon, Segment, Menu } from 'semantic-ui-react';
+import { connect } from 'react-redux';
 import PropTypes from 'prop-types';
 import AceEditor from 'react-ace';
+import { List } from 'immutable';
 import shortid from 'shortid';
-import { StoryController } from '../../../lib/story_controller';
-import { ConversationOptionsContext } from '../utils/Context';
-import { traverseStory } from '../../../lib/story.utils';
-import StoryTopMenu from './StoryTopMenu';
-import BranchTabLabel from './BranchTabLabel';
-import { wrapMeteorCallback } from '../utils/Errors';
 import 'brace/theme/github';
 import 'brace/mode/text';
 
+import {
+    traverseStory,
+    getSubBranchesForPath,
+    accumulateExceptions,
+} from '../../../lib/story.utils';
+import { StoryController } from '../../../lib/story_controller';
+import { ConversationOptionsContext } from '../utils/Context';
+import { setStoryPath } from '../../store/actions/actions';
+import { wrapMeteorCallback } from '../utils/Errors';
+import BranchTabLabel from './BranchTabLabel';
+import StoryTopMenu from './StoryTopMenu';
 import StoryFooter from './StoryFooter';
+
+function getDefaultPath(story) {
+    if (!story.branches) return [story._id];
+    const newPath = [story._id];
+    let newLevel = story.branches.length;
+    let branches = [...story.branches];
+    while (newLevel) {
+        newPath.push(branches[0]._id);
+        newLevel = branches[0].branches.length;
+        branches = [...branches[0].branches];
+    }
+    return newPath;
+}
 
 const StoryEditorContainer = ({
     story,
@@ -27,17 +45,35 @@ const StoryEditorContainer = ({
     editor: editorType,
     onSaving,
     onSaved,
+    branchPath,
+    changeStoryPath,
+    collapsed,
 }) => {
-    const { slots } = useContext(ConversationOptionsContext);
-    const [activeBranch, setActiveBranch] = useState(traverseStory(story, story._id));
-    const [newBranchPath, setNewBranchPath] = useState('');
+    const { slots, templates, stories } = useContext(ConversationOptionsContext);
+    // The next path to go to when a change is made, we wait for the story prop to be updated to go that path
+    // useful when we add branch for instance, we have to wait for the branches to actually be in the db
+    // set to null when we don't want to go anywhere
+    const [nextBranchPath, setNextBranchPath] = useState(null);
+    // Used to store ace editors instance to dynamically set annotations
+    // the ace edtior react component has a bug where it does not set properly
+    // so we have to use this workaround
+    const [editors, setEditors] = useState({});
+    const [exceptions, setExceptions] = useState({});
+    const [destinationStory, setDestinationStory] = useState({});
+    const [destinationStories, setDestinationStories] = useState([]);
 
     const saveStory = (path, content) => {
         onSaving();
         Meteor.call(
             'stories.update',
-            { _id: story._id, ...content, path },
-            wrapMeteorCallback(() => onSaved()),
+            {
+                _id: story._id,
+                ...content,
+                path: typeof path === 'string' ? [path] : path,
+            },
+            wrapMeteorCallback(() => {
+                onSaved();
+            }),
         );
     };
 
@@ -47,46 +83,167 @@ const StoryEditorContainer = ({
             slots,
             () => {},
             content => saveStory(story._id, { story: content }),
+            templates,
+            story.checkpoints && story.checkpoints.length > 0,
         ),
     });
+
+    useEffect(() => {
+        if (storyControllers[story._id]) {
+            const change = storyControllers[story._id].isABranch !== (story.checkpoints && story.checkpoints.length > 0);
+            storyControllers[story._id].isABranch = story.checkpoints && story.checkpoints.length > 0;
+            if (change) {
+                storyControllers[story._id].validateStory();
+            }
+        }
+    }, [story.checkpoints && story.checkpoints.length]);
+
+    const isBranchLinked = branchId => (
+        destinationStories
+            .some(aStory => (aStory.checkpoints
+                .some(checkpointPath => (checkpointPath
+                    .includes(branchId)
+                )))));
+
+    const findDestinationStories = () => stories.filter(aStory => branchPath.some((storyId) => {
+        if (aStory.checkpoints === undefined) return false;
+        return aStory.checkpoints.some(checkpointPath => checkpointPath.includes(storyId));
+    }));
+
+    function findDestinationStory() {
+        return stories.find((aStory) => {
+            if (aStory.checkpoints !== undefined) {
+                return aStory.checkpoints.some(checkpoint => checkpoint[checkpoint.length - 1] === branchPath[branchPath.length - 1]);
+            }
+            return false;
+        });
+    }
+    useEffect(() => {
+        const newDestinationStory = findDestinationStory();
+        const newDestinationStories = findDestinationStories();
+        setDestinationStory(newDestinationStory);
+        setDestinationStories(newDestinationStories);
+    }, [branchPath]);
+
+    function onDestinationStorySelection(event, { value }) {
+        // remove the link if the value of the drop down is empty
+        if (value === '') {
+            Meteor.call('stories.removeCheckpoints', destinationStory._id, branchPath);
+        } else if (value && destinationStory) {
+            Meteor.call('stories.removeCheckpoints', destinationStory._id, branchPath);
+            Meteor.call('stories.addCheckpoints', value, branchPath);
+        } else {
+            Meteor.call('stories.addCheckpoints', value, branchPath);
+        }
+        const newDestinationStory = findDestinationStory();
+        setDestinationStory(newDestinationStory);
+    }
+
+    // This is to make sure that all opened branches have corresponding storyController objects
+    // attached to them.
+    useEffect(() => {
+        const newStoryControllers = {};
+        branchPath.forEach((_, index) => {
+            const currentPath = branchPath.slice(0, index + 1);
+            if (!storyControllers[currentPath.join()]) {
+                const newStory = traverseStory(story, branchPath.slice(0, index + 1));
+                newStoryControllers[currentPath.join()] = new StoryController(
+                    newStory.story || '',
+                    slots,
+                    () => {},
+                    content => saveStory(currentPath, { story: content }),
+                    templates,
+                    // define if it's in a branch or not
+                    currentPath.length > 1,
+                );
+            }
+        });
+        setStoryControllers({
+            ...storyControllers,
+            ...newStoryControllers,
+        });
+    }, [branchPath]);
+
+    const GetExceptionsLengthByType = exceptionType => (
+        // valid types are "errors" and "warnings"
+        exceptions[story._id] && exceptions[story._id][exceptionType]
+            ? exceptions[story._id][exceptionType].length
+            : 0
+    );
 
     const renderTopMenu = () => (
         <StoryTopMenu
             title={story.title}
+            storyId={story._id}
             onDelete={onDelete}
             onMove={onMove}
             disabled={disabled}
             onRename={onRenameStory}
             onClone={onClone}
             groupNames={groupNames}
+            errors={GetExceptionsLengthByType('errors')}
+            warnings={GetExceptionsLengthByType('warnings')}
+            isDestinationStory={story.checkpoints && story.checkpoints.length > 0}
+            isLinked={destinationStories.length > 0}
+            originStories={story.checkpoints}
         />
     );
 
-    const renderAceEditor = path => (
-        <AceEditor
-            readOnly={disabled}
-            // onLoad={setEditor}
-            theme='github'
-            width='100%'
-            name='story'
-            mode='text'
-            minLines={5}
-            maxLines={Infinity}
-            fontSize={12}
-            onChange={newStory => storyControllers[path].setMd(newStory)}
-            value={storyControllers[path] ? storyControllers[path].md : ''}
-            showPrintMargin={false}
-            showGutter
-            // annotations={annotations}
-            editorProps={{
-                $blockScrolling: Infinity,
-            }}
-            setOptions={{
-                tabSize: 2,
-                useWorker: false, // the worker has a bug which removes annotations
-            }}
-        />
-    );
+    const convertToAnnotations = (pathAsString) => {
+        if (!storyControllers[pathAsString]) {
+            return [];
+        }
+        const annotations = storyControllers[pathAsString].exceptions.map(exception => ({
+            row: exception.line - 1,
+            type: exception.type,
+            text: exception.message,
+        }));
+        if (editors[pathAsString]) {
+            editors[pathAsString].getSession().setAnnotations(annotations);
+        }
+        return annotations;
+    };
+
+    function handleLoadEditor(editor, path) {
+        setEditors({
+            ...editors,
+            [path]: editor,
+        });
+    }
+
+    const renderAceEditor = (path) => {
+        const pathAsString = path.join();
+        return (
+            <AceEditor
+                readOnly={disabled}
+                // onLoad={setEditor}
+                theme='github'
+                width='100%'
+                name='story'
+                mode='text'
+                onLoad={editor => handleLoadEditor(editor, pathAsString)}
+                minLines={5}
+                maxLines={Infinity}
+                fontSize={12}
+                onChange={newStory => storyControllers[pathAsString].setMd(newStory)}
+                value={
+                    storyControllers[pathAsString]
+                        ? storyControllers[pathAsString].md
+                        : ''
+                }
+                showPrintMargin={false}
+                showGutter
+                annotations={convertToAnnotations(pathAsString)}
+                editorProps={{
+                    $blockScrolling: Infinity,
+                }}
+                setOptions={{
+                    tabSize: 2,
+                    useWorker: false, // the worker has a bug which removes annotations
+                }}
+            />
+        );
+    };
 
     const getNewBranchName = (branches, offset = 0) => {
         const branchNums = branches.map((branch) => {
@@ -99,124 +256,200 @@ const StoryEditorContainer = ({
         return `New Branch ${newBranchNum + 1}`;
     };
 
-    const handleDeleteBranch = (path, branches, index) => {
-        const commonPath = path.match(/.*__/) ? path.match(/.*__/)[0] : story._id;
-        const parentPath = commonPath.match(/(.*)__/)[1];
-        const updatedBranches = branches.length < 3
-            ? []
-            : [...branches.slice(0, index), ...branches.slice(index + 1)];
-        const newPath = branches.length < 3
-            ? parentPath
-            : `${commonPath}${branches[index + 1] ? branches[index + 1]._id : branches[index - 1]._id}`;
-        setNewBranchPath(newPath);
-        saveStory(parentPath, { branches: updatedBranches });
-    };
-
     const handleSwitchBranch = (path) => {
         const newBranch = traverseStory(story, path);
+        const pathAsString = path.join();
         // will instantiate a storyController if it doesn't exist
         if (
-            !storyControllers[path]
-            || !(storyControllers[path] instanceof StoryController)
+            !storyControllers[pathAsString]
+            || !(storyControllers[pathAsString] instanceof StoryController)
         ) {
             setStoryControllers({
                 ...storyControllers,
-                [path]: new StoryController(
+                [pathAsString]: new StoryController(
                     newBranch.story || '',
                     slots,
                     () => {},
                     content => saveStory(path, { story: content }),
+                    templates,
+                    // define if it's in a branch or not
+                    path.length > 1,
                 ),
             });
         }
-        setActiveBranch(newBranch);
+        changeStoryPath(story._id, path);
+    };
+
+    const handleDeleteBranch = (path, branches, index) => {
+        const parentPath = path.slice(0, path.length - 1);
+        if (branches.length < 3) {
+            handleSwitchBranch(parentPath);
+            // we append the remaining story to the parent one.
+            const deletedStory = branches[!index ? 1 : 0].story;
+            const newParentStory = `${storyControllers[parentPath.join()].md}${
+                deletedStory ? '\n' : ''
+            }${deletedStory || ''}`;
+            saveStory(parentPath, {
+                branches: [],
+                story: newParentStory,
+            });
+            storyControllers[parentPath.join()].setMd(newParentStory);
+        } else {
+            const updatedBranches = [
+                ...branches.slice(0, index),
+                ...branches.slice(index + 1),
+            ];
+            handleSwitchBranch(
+                index === 0
+                    ? [...parentPath, branches[index + 1]._id]
+                    : [...parentPath, branches[index - 1]._id],
+            );
+            saveStory(parentPath, { branches: updatedBranches });
+        }
     };
 
     useEffect(() => {
-        if (newBranchPath) {
+        // This allows awaiting for db changes before setting the active branch
+        if (nextBranchPath) {
             try {
-                handleSwitchBranch(newBranchPath);
-                setNewBranchPath('');
+                handleSwitchBranch(nextBranchPath);
+                setNextBranchPath(null);
             } catch (e) {
                 //
             }
         }
+    }, [story, nextBranchPath]);
+
+    useEffect(() => {
+        const newExceptions = accumulateExceptions(
+            story,
+            slots,
+            templates,
+            storyControllers,
+            setStoryControllers,
+            saveStory,
+        );
+        setExceptions(newExceptions);
     }, [story]);
 
     // new Level is true if the new branches create a new depth level of branches.
     const handleCreateBranch = (path, branches = [], num = 1, newLevel = true) => {
-        const commonPath = path.match(/.*__/) ? path.match(/.*__/)[0] : story._id;
-        const newBranches = [...new Array(num)].map((_, i) => (
-            {
-                title: getNewBranchName(branches, i),
-                story: '',
-                projectId: story.projectId,
-                branches: [],
-                _id: shortid.generate().replace('_', '0'),
-            }
-        ));
-        setNewBranchPath(
-            !newLevel ? `${commonPath}__${newBranches[0]._id}` : `${path}__${newBranches[0]._id}`,
+        const newBranches = [...new Array(num)].map((_, i) => ({
+            title: getNewBranchName(branches, i),
+            story: '',
+            projectId: story.projectId,
+            branches: [],
+            errors: [],
+            warnings: [],
+            _id: shortid.generate().replace('_', '0'),
+        }));
+        setNextBranchPath(
+            newLevel
+                ? [...branchPath, newBranches[0]._id]
+                : [...path, newBranches[0]._id],
         );
         saveStory(path, { branches: [...branches, ...newBranches] });
     };
 
-    const renderBranches = (path) => {
-        const { branches } = traverseStory(story, path);
-        const query = new RegExp(`(${path}__.*?)(__|$)`);
-        const queriedPath = activeBranch.path || story._id;
-        const nextPath = queriedPath.match(query) && queriedPath.match(query)[1];
+    const renderBranches = (depth = 0) => {
+        //
+        const pathToRender = branchPath.slice(0, depth + 1);
+        let branches = [];
+        // This is to handle the case where the story is modified by another user
+        // and the path no longer corresponds to anything
+        try {
+            branches = getSubBranchesForPath(story, pathToRender);
+        } catch (e) {
+            changeStoryPath(story._id, getDefaultPath(story));
+        }
+        if (collapsed) return null;
         return (
-            <Segment attached className='single-story-container'>
-                {editorType !== 'visual' ? renderAceEditor(path) : null}
-                { branches.length > 0 && (
+            <Segment
+                attached
+                className='single-story-container'
+                data-cy='single-story-editor'
+            >
+                {editorType !== 'visual' ? renderAceEditor(pathToRender) : null}
+                {branches.length > 0 && (
                     <Menu pointing secondary data-cy='branch-menu'>
-                        { branches.map((branch, index) => {
-                            const childPath = `${path}__${branch._id}`;
+                        {branches.map((branch, index) => {
+                            const childPath = [...pathToRender, branch._id];
+                            const branchLabelExceptions = exceptions[childPath.join()];
                             return (
                                 <BranchTabLabel
-                                    key={childPath}
+                                    key={childPath.join()}
                                     value={branch.title}
-                                    active={activeBranch // activeBranch starts with branch's path
-                                        && (activeBranch.path === childPath || activeBranch.path.indexOf(`${childPath}__`) === 0)}
+                                    active={branchPath.indexOf(branch._id) !== -1}
                                     onSelect={() => {
-                                        if (activeBranch // do no change activeBranch if clicked branch is an ancestor
-                                            && activeBranch.path.indexOf(`${childPath}__`) === 0) return;
+                                        // do no change activeBranch if clicked branch is already in the path
+                                        if (branchPath.indexOf(branch._id) !== -1) return;
                                         handleSwitchBranch(childPath);
                                     }}
                                     onChangeName={(newName) => {
                                         saveStory(childPath, { title: newName });
-                                        setNewBranchPath(`${activeBranch.pathTitle.match(/.*__/)[0]}${newName}`);
                                     }}
-                                    onDelete={() => handleDeleteBranch(childPath, branches, index)}
+                                    onDelete={() => handleDeleteBranch(childPath, branches, index)
+                                    }
+                                    exceptions={branchLabelExceptions}
                                     siblings={branches}
+                                    isLinked={isBranchLinked(branch._id)}
+                                    isParentLinked={isBranchLinked(pathToRender[pathToRender.length - 1])}
                                 />
                             );
                         })}
-                        <Menu.Item key={`${path}-add`} className='add-tab' onClick={() => handleCreateBranch(path, branches, 1, false)} data-cy='add-branch'>
+                        <Menu.Item
+                            key={`${pathToRender.join()}-add`}
+                            className='add-tab'
+                            onClick={() => handleCreateBranch(pathToRender, branches, 1, false)
+                            }
+                            data-cy='add-branch'
+                        >
                             <Icon name='plus' />
                         </Menu.Item>
                     </Menu>
                 )}
-                { branches.length > 0 && activeBranch && nextPath && ( // render branch content
-                    renderBranches(nextPath)
-                )}
+                {branches.length > 0
+                && branchPath.length > pathToRender.length // render branch content
+                    && renderBranches(depth + 1)}
             </Segment>
         );
     };
 
+    function canBranch() {
+        try {
+            return !getSubBranchesForPath(story, branchPath).length;
+        } catch (e) {
+            return !getSubBranchesForPath(story, [story._id]).length;
+        }
+    }
+
+    function getStoryPath() {
+        try {
+            return traverseStory(story, branchPath).pathTitle;
+        } catch (e) {
+            return [story.title];
+        }
+    }
+
     return (
         <div className='story-editor' data-cy='story-editor'>
             {renderTopMenu()}
-            {renderBranches(story._id)}
-            <StoryFooter
-                onBranch={() => handleCreateBranch(activeBranch.path, activeBranch.branches, 2)}
-                onContinue={() => {}}
-                canContinue={false}
-                canBranch={!activeBranch.branches.length}
-                storyPath={activeBranch.pathTitle}
-                disableContinue
-            />
+            {renderBranches()}
+            {!collapsed && (
+                <StoryFooter
+                    onBranch={() => handleCreateBranch(branchPath, [], 2)}
+                    onContinue={() => {}}
+                    canContinue={false}
+                    onDestinationStorySelection={onDestinationStorySelection}
+                    destinationStory={destinationStory}
+                    // We just check if there are any branches at the current path
+                    // If there are, we can't branch
+                    canBranch={canBranch()}
+                    storyPath={getStoryPath()}
+                    currentStoryId={story._id}
+                    disableContinue
+                />
+            )}
         </div>
     );
 };
@@ -232,12 +465,33 @@ StoryEditorContainer.propTypes = {
     editor: PropTypes.string,
     onSaving: PropTypes.func.isRequired,
     onSaved: PropTypes.func.isRequired,
+    branchPath: PropTypes.array,
+    changeStoryPath: PropTypes.func.isRequired,
+    collapsed: PropTypes.bool.isRequired,
 };
 
 StoryEditorContainer.defaultProps = {
     disabled: false,
     story: '',
     editor: 'markdown',
+    branchPath: null,
 };
 
-export default StoryEditorContainer;
+const mapStateToProps = (state, ownProps) => ({
+    branchPath: state.stories
+        .getIn(
+            ['savedStoryPaths', ownProps.story._id],
+            List(getDefaultPath(ownProps.story)),
+        )
+        .toJS(),
+    collapsed: state.stories.getIn(['storiesCollapsed', ownProps.story._id], false),
+});
+
+const mapDispatchToProps = {
+    changeStoryPath: setStoryPath,
+};
+
+export default connect(
+    mapStateToProps,
+    mapDispatchToProps,
+)(StoryEditorContainer);

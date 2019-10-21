@@ -1,4 +1,5 @@
 /* eslint-disable no-undef */
+/* eslint-disable no-await-in-loop */
 // ***********************************************************
 // This example support/index.js is processed and
 // loaded automatically before your test files.
@@ -16,7 +17,10 @@
 
 import './commands';
 
+const axios = require('axios');
 require('cypress-plugin-retries');
+
+Cypress.on('uncaught:exception', () => false);
 
 Cypress.Commands.add('login', (visit = true, email = 'test@test.com', password = 'Aaaaaaaa00') => {
     if (visit) cy.visit('/');
@@ -215,3 +219,15 @@ Cypress.Commands.add(
         });
     },
 );
+
+Cypress.Commands.add('waitForResolve', (url, maxTries = 1000) => new Cypress.Promise(async function(resolve, reject) {
+    for (let i = 1; i < Number.MAX_VALUE; i += 1) {
+        try {
+            await axios(url);
+            resolve();
+        } catch (error) {
+            if (!error.toString().includes('ERR_EMPTY_RESPONSE')) resolve();
+            if (i > maxTries) reject(`Can't connect to ${url}`);
+        }
+    }
+}));

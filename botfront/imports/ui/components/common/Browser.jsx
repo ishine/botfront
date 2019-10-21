@@ -1,8 +1,12 @@
 import {
-    Menu, Icon, Input, Loader, Button,
+    Menu, Icon, Input, Button,
 } from 'semantic-ui-react';
 import PropTypes from 'prop-types';
 import React from 'react';
+import ExceptionAlerts from '../stories/ExceptionAlerts';
+import StoryGroupItem from './StoryGroupItem';
+import { ConversationOptionsContext } from '../utils/Context';
+
 
 class Browser extends React.Component {
     constructor(props) {
@@ -78,14 +82,12 @@ class Browser extends React.Component {
         event.stopPropagation();
         const { toggleSelect } = this.props;
         toggleSelect(element);
-    };
-
-    handleEdit = (index, itemName) => {
-        this.setState({ editing: index, itemName });
-    };
+    };    
+  
 
     render() {
         const {
+            children,
             data,
             index: indexProp,
             pageSize,
@@ -94,62 +96,30 @@ class Browser extends React.Component {
             saving,
             selectAccessor,
             allowEdit,
+            changeName,
+            stories,
             placeholderAddItem,
         } = this.props;
-
         const {
-            addMode, newItemName, page, editing, itemName,
+            addMode, newItemName, page,
         } = this.state;
 
         const items = data.map((item, index) => (
-            <Menu.Item
+
+            <StoryGroupItem
                 key={index.toString()}
-                name={item[nameAccessor]}
-                className={indexProp === index ? 'selected-blue' : ''}
-                active={indexProp === index}
-                onClick={() => this.handleClickMenuItem(index)}
-                link={indexProp !== index}
-                data-cy='browser-item'
-            >
-                {editing !== index ? (
-                    <>
-                        {selectAccessor && (
-                            <Icon
-                                id={`${
-                                    item[selectAccessor]
-                                        ? 'selected'
-                                        : 'not-selected'
-                                }`}
-                                name='eye'
-                                onClick={e => this.handleToggle(e, item)}
-                            />
-                        )}
-                        {allowEdit && (
-                            <Icon
-                                id='edit-icon'
-                                name='edit'
-                                onClick={() => this.handleEdit(index, item[nameAccessor])
-                                }
-                                data-cy='edit-name-icon'
-                            />
-                        )}
-                        <span>{item[nameAccessor]}</span>
-                        {indexProp === index && saving && (
-                            <Loader active size='tiny' />
-                        )}
-                    </>
-                ) : (
-                    <Input
-                        onChange={this.handleChangeOldName}
-                        value={itemName}
-                        onKeyDown={e => this.handleKeyDownInput(e, item)}
-                        autoFocus
-                        onBlur={() => this.submitTitleInput(item)}
-                        fluid
-                        data-cy='edit-name'
-                    />
-                )}
-            </Menu.Item>
+                index={index}
+                item={item}
+                indexProp={indexProp}
+                nameAccessor={nameAccessor}
+                handleClickMenuItem={() => this.handleClickMenuItem(index)}
+                selectAccessor={selectAccessor}
+                allowEdit={allowEdit}
+                handleToggle={e => this.handleToggle(e, item)}
+                saving={saving}
+                changeName={changeName}
+                stories={stories}
+            />
         ));
         return (
             <>
@@ -179,6 +149,7 @@ class Browser extends React.Component {
                             data-cy='add-item-input'
                         />
                     ))}
+                {children}
                 {data.length > 0 && (
                     <Menu vertical fluid>
                         {items}
@@ -203,6 +174,8 @@ Browser.propTypes = {
     changeName: PropTypes.func,
     allowEdit: PropTypes.bool,
     placeholderAddItem: PropTypes.string,
+    children: PropTypes.element,
+    stories: PropTypes.array.isRequired,
 };
 
 Browser.defaultProps = {
@@ -218,6 +191,17 @@ Browser.defaultProps = {
     selectAccessor: '',
     allowEdit: false,
     placeholderAddItem: '',
+    children: <></>,
 };
 
-export default Browser;
+
+export default props => (
+    <ConversationOptionsContext.Consumer>
+        {value => (
+            <Browser
+                {...props}
+                stories={value.stories}
+            />
+        )}
+    </ConversationOptionsContext.Consumer>
+);

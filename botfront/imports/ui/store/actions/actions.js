@@ -47,3 +47,19 @@ export function setStoryGroup(groupIndex) {
         groupIndex,
     };
 }
+
+export function setStoryPath(storyId, path) {
+    return {
+        type: types.SET_STORY_PATH,
+        storyId,
+        path,
+    };
+}
+
+export function setStoryCollapsed(storyId, collapsed) {
+    return {
+        type: types.SET_STORY_COLLAPSED,
+        storyId,
+        collapsed,
+    };
+}

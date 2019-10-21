@@ -26,10 +26,7 @@ function StoriesEditor(props) {
             stories[index],
             wrapMeteorCallback((err) => {
                 if (!err) {
-                    // deletes group if no stories left
-                    if (stories.length === 1) {
-                        onDeleteGroup();
-                    }
+                    if (stories.length === 1) onDeleteGroup();
                 }
             }),
         );
@@ -60,6 +57,7 @@ function StoriesEditor(props) {
     function handleDuplicateStory(index) {
         const newStory = { ...stories[index] };
         delete newStory._id;
+        delete newStory.checkpoints;
         newStory.title = `${stories[index].title} (copy)`;
         Meteor.call(
             'stories.insert',

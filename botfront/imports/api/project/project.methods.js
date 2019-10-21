@@ -1,6 +1,6 @@
 import { check, Match } from 'meteor/check';
 import { safeLoad as yamlLoad } from 'js-yaml';
-import { Projects } from './project.collection';
+import { Projects, createProject } from './project.collection';
 import { NLUModels } from '../nlu_model/nlu_model.collection';
 import { createInstance } from '../instances/instances.methods';
 import { Instances } from '../instances/instances.collection';
@@ -16,8 +16,7 @@ import { createIntroStoryGroup, createDefaultStoryGroup } from '../storyGroups/s
 import { StoryGroups } from '../storyGroups/storyGroups.collection';
 import { Stories } from '../story/stories.collection';
 import { Slots } from '../slots/slots.collection';
-import { extractDomain } from '../../lib/story_controller';
-import { flattenStory } from '../../lib/story.utils';
+import { flattenStory, extractDomain } from '../../lib/story.utils';
 
 if (Meteor.isServer) {
     export const extractDomainFromStories = (stories, slots) => yamlLoad(extractDomain(stories, slots));
@@ -32,7 +31,10 @@ if (Meteor.isServer) {
             intents = trainingData.map(example => example.intent);
             entities = trainingData.map(example => example.entities);
             if (entities.length !== 0) {
-                entities = entities.reduce((acc, x) => acc.concat(x));
+                entities = entities.reduce((acc, x) => {
+                    if (x) return acc.concat(x);
+                    return acc; // in case training example had no entities key
+                });
                 entities = entities.map(entity => entity.entity);
             }
             return {
@@ -66,7 +68,7 @@ if (Meteor.isServer) {
             check(item, Object);
             let _id;
             try {
-                _id = Projects.insert(item);
+                _id = createProject(item);
                 createEndpoints({ _id, ...item });
                 createDeployment({ _id, ...item });
                 createCredentials({ _id, ...item });

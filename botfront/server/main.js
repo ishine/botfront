@@ -15,7 +15,6 @@ import '../imports/api/endpoints/endpoints.collection';
 import '../imports/api/instances/instances.collection';
 import '../imports/api/instances/instances.methods';
 import '../imports/api/instances/instances.schema';
-import '../imports/lib/nlu_methods';
 import '../imports/api/nlu_model/nlu_model.collection';
 import '../imports/api/nlu_model/nlu_model.schema';
 import '../imports/api/nlu_model/nlu_model.methods';
@@ -38,6 +37,8 @@ import '../imports/api/slots/slots.methods';
 import '../imports/api/slots/slots.schema';
 import '../imports/api/orchestration/orchestration.methods.js';
 import '../imports/lib/scopes';
+import '../imports/api/importExport/import.methods';
+import '../imports/api/importExport/export.methods';
 
 
 import './migrations';

@@ -1,5 +1,5 @@
 import {
-    Grid, Message, Menu, Icon,
+    Grid, Message,
 } from 'semantic-ui-react';
 import { connect } from 'react-redux';
 import PropTypes from 'prop-types';
@@ -7,6 +7,8 @@ import React from 'react';
 
 import { setStoryGroup } from '../../store/actions/actions';
 import { wrapMeteorCallback } from '../utils/Errors';
+
+import IntroStorySubMenu from './IntroStorySubMenu';
 import ItemsBrowser from '../common/Browser';
 import StoriesEditor from './StoriesEditor';
 
@@ -31,6 +33,8 @@ class Stories extends React.Component {
             {
                 name,
                 projectId,
+                hasErrors: [],
+                hasWarnings: [],
             },
             wrapMeteorCallback((err, groupId) => {
                 if (!err) {
@@ -98,6 +102,7 @@ class Stories extends React.Component {
                 storyGroupId: `${
                     !!introStoryGroup ? introStoryGroup._id : storyGroups[storyIndex]._id
                 }`,
+                branches: [],
             },
             wrapMeteorCallback(),
         );
@@ -225,7 +230,7 @@ class Stories extends React.Component {
             )
         );
     };
-
+    
     render() {
         const { storyGroups } = this.props;
         const {
@@ -243,53 +248,8 @@ class Stories extends React.Component {
             storyGroupNameSelected,
             storyGroupFiltered,
         );
-
         return (
             <Grid className='stories-container'>
-                <Grid.Row columns={2}>
-                    <Grid.Column width={4}>
-                        <Menu
-                            vertical
-                            fluid
-                            onClick={this.handleIntroStoryClick}
-                            className={`intro-story ${
-                                storySelected === -1 ? 'selected-intro-story' : ''
-                            }`}
-                        >
-                            <Menu.Item
-                                active={storySelected === -1}
-                                link
-                                data-cy='intro-story-group'
-                            >
-                                <Icon
-                                    id={`${
-                                        introStory && introStory.selected
-                                            ? 'selected'
-                                            : 'not-selected'
-                                    }`}
-                                    name='eye'
-                                    onClick={e => this.handleIntroClick(e, introStory)}
-                                />
-                                <span>Intro stories</span>
-                            </Menu.Item>
-                        </Menu>
-                    </Grid.Column>
-                    <Grid.Column width={12} className='story-name-parent'>
-                        {storySelected !== -1 ? (
-                            <Message info size='small'>
-                                Create detailed use case scenarios for your bot using
-                                multiple stories.
-                            </Message>
-                        ) : (
-                            <Message info size='small'>
-                                The Intro stories group contains the initial messages that
-                                would be sent to users when they start chatting with your
-                                bot.
-                            </Message>
-                        )}
-                    </Grid.Column>
-                </Grid.Row>
-
                 <Grid.Row columns={2}>
                     <Grid.Column width={4}>
                         {validationErrors && (
@@ -313,7 +273,14 @@ class Stories extends React.Component {
                                 toggleSelect={this.handleStoryGroupSelect}
                                 changeName={this.handleNameChange}
                                 placeholderAddItem='Choose a group name'
-                            />
+                            >
+                                <IntroStorySubMenu
+                                    introStory={introStory}
+                                    introClick={this.handleIntroClick}
+                                    introStoryClick={this.handleIntroStoryClick}
+                                    isSelected={storySelected === -1}
+                                />
+                            </ItemsBrowser>
                         )}
                     </Grid.Column>
 
@@ -342,8 +309,8 @@ Stories.defaultProps = {
 };
 
 const mapStateToProps = state => ({
-    storyMode: state.get('storyMode'),
-    storyGroupCurrent: state.get('storyGroupCurrent'),
+    storyMode: state.stories.get('storyMode'),
+    storyGroupCurrent: state.stories.get('storyGroupCurrent'),
 });
 
 const mapDispatchToProps = {

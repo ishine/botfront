@@ -1,5 +1,3 @@
-import { safeDump as yamlDump } from 'js-yaml';
-
 class StoryException {
     constructor(type, message, line, code) {
         this.type = type;
@@ -10,14 +8,22 @@ class StoryException {
 }
 
 export class StoryController {
-    constructor(story, slots, notifyUpdate = () => {}, saveUpdate = null) {
+    constructor(story, slots, notifyUpdate = () => {}, saveUpdate = null, templates = null, isABranch = false) {
         this.domain = {
             slots: this.getSlots(slots),
         };
         this.md = story;
+        this.isABranch = isABranch;
+        this.templates = this.loadTemplates(templates || []) || [];
         this.notifyUpdate = notifyUpdate;
         this.saveUpdate = saveUpdate;
         this.validateStory();
+    }
+    
+    loadTemplates = (templates) => {
+        if (templates instanceof Array) return templates.map(template => template.key);
+        const templatesAsArray = [];
+        return Object.keys(templates).forEach(templateKey => templatesAsArray.push(templateKey));
     }
 
     getSlots = (slots) => {
@@ -25,21 +31,10 @@ export class StoryController {
         if (!slots) return {};
         slots.forEach((slot) => {
             const options = {};
-            const { type } = slot;
-            if (type === 'float') {
-                if (slot.minValue) {
-                    options.minValue = slot.minValue;
-                }
-                if (slot.maxValue) {
-                    options.maxValue = slot.maxValue;
-                }
-            }
-            if (slot.initialValue) {
-                options.initial_value = slot.initialValue;
-            }
-            if (type === 'categorical' && slot.categories) {
-                options.values = slot.categories;
-            }
+            if (slot.minValue) options.min_value = slot.minValue;
+            if (slot.maxValue) options.max_value = slot.maxValue;
+            if (slot.initialValue) options.initial_value = slot.initialValue;
+            if (slot.categories) options.values = slot.categories;
             slotsToAdd[slot.name] = {
                 type: slot.type,
                 ...options,
@@ -70,7 +65,9 @@ export class StoryController {
         this.form = null;
         if (!this.hasInvalidChars(this.response)) {
             this.domain.actions.add(this.response);
-            this.domain.templates[this.response] = '';
+            if (this.templates.indexOf(this.response) === -1) {
+                this.raiseStoryException('no_such_response');
+            }
             this.lines[this.idx].gui = { type: 'bot', data: { name: this.response } };
         }
     };
@@ -138,6 +135,7 @@ export class StoryController {
         form: ['error', 'Form calls should look like this: `- form{"name": "MyForm"}`.'],
         slot: ['error', 'Slot calls should look like this: `- slot{"slot_name": "slot_value"}`.'],
         no_such_slot: ['error', 'Slot was not found. Have you defined it?'],
+        no_such_response: ['warning', 'Response was not found. Have you defined it?'],
         bool_slot: ['error', 'Expected a boolean value for this slot.'],
         text_slot: ['error', 'Expected a text value for this slot.'],
         float_slot: ['error', 'Expected a numerical value for this slot.'],
@@ -183,8 +181,8 @@ export class StoryController {
     };
 
     validateResponse = () => {
-        if (!this.intent) this.raiseStoryException('have_intent');
         this.response = this.content.trim();
+        if (!this.intent && !this.isABranch) this.raiseStoryException('have_intent');
         if (this.response.match(/^utter_/)) {
             this.validateUtter();
         } else if (this.response.match(/^action_/)) {
@@ -274,7 +272,7 @@ export class StoryController {
         this.lines = [...this.lines.slice(0, i), ...this.lines.slice(i + 1)];
         this.md = this.lines.map(l => l.md).join('\n');
         this.validateStory();
-        if (this.saveUpdate) this.saveUpdate(this.md);
+        if (this.saveUpdate) this.saveUpdate(this.md, this.getErrors(), this.getWarnings());
         else this.notifyUpdate();
     };
 
@@ -283,7 +281,7 @@ export class StoryController {
         if (!newMdLine) return;
         this.lines = [...this.lines.slice(0, i + 1), newMdLine, ...this.lines.slice(i + 1)];
         this.md = this.lines.map(l => l.md).join('\n');
-        if (this.saveUpdate && content.data && content.data !== [null]) this.saveUpdate(this.md);
+        if (this.saveUpdate && content.data && content.data !== [null]) this.saveUpdate(this.md, this.getErrors(), this.getWarnings());
         else this.notifyUpdate();
     };
 
@@ -293,15 +291,19 @@ export class StoryController {
         this.lines = [...this.lines.slice(0, i), newMdLine, ...this.lines.slice(i + 1)];
         this.md = this.lines.map(l => l.md).join('\n');
         this.validateStory();
-        if (this.saveUpdate && content.data && content.data !== [null]) this.saveUpdate(this.md);
+        if (this.saveUpdate && content.data && content.data !== [null]) this.saveUpdate(this.md, this.getErrors(), this.getWarnings());
         else this.notifyUpdate();
     };
 
     setMd = (content) => {
         this.md = content;
         this.validateStory();
-        if (this.saveUpdate) this.saveUpdate(this.md);
+        if (this.saveUpdate) this.saveUpdate(this.md, this.getErrors(), this.getWarnings());
     }
+
+    getErrors = () => this.exceptions.filter(exception => exception.type === 'error');
+
+    getWarnings = () => this.exceptions.filter(exception => exception.type === 'warning');
 
     getPossibleInsertions = (i) => {
         const possibleInsertions = {
@@ -318,120 +320,10 @@ export class StoryController {
     }
 
     extractDomain = () => {
-        const errors = this.exceptions.filter(exception => exception.type === 'error');
+        const errors = this.getErrors();
         if (errors.length > 0) {
             throw new Error(`Error at line ${errors[0].line}: ${errors[0].message}`);
         }
         return this.domain;
     };
-
-    extractDialogAct = () => {
-        const initRegex = /^\* *(.*)/;
-        const initPayload = initRegex.exec(this.lines[0])[1];
-        this.payloads = initPayload.split(' OR ').map(disj => disj.trim());
-        this.response = null;
-        this.form = null;
-        const payloadRegex = /([^{]*) *({.*}|)/;
-        const output = [];
-        try {
-            this.payloads.forEach((stringPayload) => {
-                const matches = payloadRegex.exec(stringPayload);
-                const intent = matches[1];
-                let entities = matches[2];
-                const objectPayload = {
-                    intent,
-                    entities: [],
-                };
-                if (entities && entities !== '') {
-                    const parsed = JSON.parse(entities);
-                    entities = Object.keys(parsed).map(key => ({ entity: key, value: parsed[key] }));
-                } else {
-                    entities = [];
-                }
-                objectPayload.entities = entities;
-                output.push({ objectPayload, stringPayload: `/${stringPayload}` });
-            });
-        } catch (e) {
-            // eslint-disable-next-line no-console
-            console.log(e);
-        }
-        return output;
-    };
 }
-function addSlots(slots) {
-    const slotsToAdd = {};
-    if (!slots) return {};
-    slots.forEach((slot) => {
-        const options = {};
-        const { type } = slot;
-        if (type === 'float') {
-            if (slot.minValue) {
-                options.minValue = slot.minValue;
-            }
-            if (slot.maxValue) {
-                options.maxValue = slot.maxValue;
-            }
-        }
-        if (slot.initialValue) {
-            options.initial_value = slot.initialValue;
-        }
-        if (type === 'categorical' && slot.categories) {
-            options.values = slot.categories;
-        }
-        slotsToAdd[slot.name] = {
-            type: slot.type,
-            ...options,
-        };
-    });
-    return slotsToAdd;
-}
-
-export const extractDomain = (stories, slots) => {
-    const defaultDomain = {
-        actions: new Set(['utter_fallback', 'utter_default']),
-        intents: new Set(),
-        entities: new Set(),
-        forms: new Set(),
-        templates: {
-            utter_default: '',
-            utter_fallback: '',
-        },
-        slots: {
-            latest_response_name: { type: 'unfeaturized' },
-            followup_response_name: { type: 'unfeaturized' },
-            parse_data: { type: 'unfeaturized' },
-            ...addSlots(slots),
-        },
-    };
-    let domains = stories.map((story) => {
-        const val = new StoryController(story, slots);
-        val.validateStory();
-        try {
-            return val.extractDomain();
-        } catch (e) {
-            return {
-                entities: [], intents: [], actions: [], forms: [], templates: [], slots: [],
-            };
-        }
-    });
-    domains = domains.reduce(
-        (d1, d2) => ({
-            entities: new Set([...d1.entities, ...d2.entities]),
-            intents: new Set([...d1.intents, ...d2.intents]),
-            actions: new Set([...d1.actions, ...d2.actions]),
-            forms: new Set([...d1.forms, ...d2.forms]),
-            templates: { ...d1.templates, ...d2.templates },
-            slots: { ...d1.slots, ...d2.slots },
-        }),
-        defaultDomain,
-    );
-    domains = yamlDump({
-        entities: Array.from(domains.entities),
-        intents: Array.from(domains.intents),
-        actions: Array.from(domains.actions),
-        forms: Array.from(domains.forms),
-        templates: domains.templates,
-        slots: domains.slots,
-    });
-    return domains;
-};
