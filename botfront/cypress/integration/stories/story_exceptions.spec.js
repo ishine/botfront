@@ -41,7 +41,7 @@ describe('story exceptions', function() {
             .click({ force: true });
         cy.get('textarea')
             .eq(textareaIndex)
-            .clear();
+            .type('{selectAll}{del}{selectAll}{del}');
     };
 
     it('should display errors and warnings in the story top menu', function() {
@@ -84,6 +84,7 @@ describe('story exceptions', function() {
         cy.dataCy('branch-tab-warning-alert').should('exist');
         
         cy.dataCy('branch-label').eq(1).click();
+        cy.get('.ace_content').eq(1).contains('error').should('not.exist');
         cy.get(':nth-child(2) > [data-cy=single-story-editor] > #story > .ace_scroller > .ace_content')
             .find('.ace_line')
             .click({ force: true });
@@ -101,7 +102,9 @@ describe('story exceptions', function() {
     it('should display warnings from nested branches in the story top menu and each level of branch menus', function() {
         createTestStoryGroup();
         cy.dataCy('create-branch').click();
+        cy.dataCy('branch-label').should('have.length', 2);
         cy.dataCy('create-branch').click();
+        cy.dataCy('branch-label').should('have.length', 4);
         cy.get(':nth-child(3) > [data-cy=single-story-editor] > #story > .ace_scroller > .ace_content')
             .find('.ace_line')
             .click({ force: true });
@@ -117,7 +120,9 @@ describe('story exceptions', function() {
         cy.dataCy('branch-tab-error-alert').eq(1).should('exist');
         cy.dataCy('branch-tab-warning-alert').eq(1).should('exist');
 
+        
         clearAceEditor(2, 3);
+        cy.get('textarea').should('have.text', '');
         cy.dataCy('top-menu-error-alert').should('not.exist');
         cy.dataCy('top-menu-warning-alert').should('not.exist');
     });
@@ -126,6 +131,7 @@ describe('story exceptions', function() {
         createTestStoryGroup();
         cy.dataCy('create-branch').should('have.length.of', 1);
         cy.dataCy('create-branch').click();
+        cy.dataCy('branch-label').should('have.length', 2);
         cy.get(':nth-child(2) > [data-cy=single-story-editor] > #story > .ace_scroller > .ace_content')
             .find('.ace_line')
             .should('have.length.of', 1);
@@ -140,6 +146,7 @@ describe('story exceptions', function() {
 
     it('should not display errors if no intents in destinationStory', function() {
         createTestStoryGroup();
+        cy.dataCy('create-branch').should('have.length.of', 1);
         cy.dataCy('add-story').click();
         cy.get(
             ':nth-child(2) > [data-cy=single-story-editor] > #story > .ace_scroller > .ace_content',
@@ -157,9 +164,11 @@ describe('story exceptions', function() {
             .find('div.item')
             .eq(3)
             .click();
+        cy.dataCy('story-footer').should('have.class', 'linked');
         cy.dataCy('stories-linker')
             .first()
             .should('contains.text', 'excpetion test 2');
+        cy.get('.tiny').should('exist'); // check for the message signaling that it has been linked
         cy.dataCy('top-menu-warning-alert').should('not.exist');
     });
 });

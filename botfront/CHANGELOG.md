@@ -2,6 +2,98 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.17.2](https://github.com/botfront/botfront/compare/v0.17.0...v0.17.2) (2019-10-30)
+
+
+### Bug Fixes
+
+* no response duplication ([384c096](https://github.com/botfront/botfront/commit/384c096))
+
+
+### Features
+
+* choose export option ([8087106](https://github.com/botfront/botfront/commit/8087106))
+
+
+### Tests
+
+* correct data cy ([ff6ff71](https://github.com/botfront/botfront/commit/ff6ff71))
+
+
+
+## [0.17.0](https://github.com/botfront/botfront/compare/v0.17.0-rc.1...v0.17.0) (2019-10-26)
+
+
+
+## [0.17.0-rc.1](https://github.com/botfront/botfront/compare/v0.17.0-rc.0...v0.17.0-rc.1) (2019-10-26)
+
+
+
+## [0.17.0-rc.0](https://github.com/botfront/botfront/compare/v0.16.7...v0.17.0-rc.0) (2019-10-26)
+
+
+### Bug Fixes
+
+* missing stash files from the latest commit ([8b89667](https://github.com/botfront/botfront/commit/8b89667))
+
+
+### Features
+
+* add botfront api files ([a0513e6](https://github.com/botfront/botfront/commit/a0513e6))
+* add support for cli arguments ([292a79f](https://github.com/botfront/botfront/commit/292a79f))
+
+
+### Tests
+
+* fix storygroup test ([03ebfc2](https://github.com/botfront/botfront/commit/03ebfc2))
+
+
+
+### [0.16.7](https://github.com/botfront/botfront/compare/v0.16.6...v0.16.7) (2019-10-25)
+
+
+### Tests
+
+* fix story groups ([ae8c448](https://github.com/botfront/botfront/commit/ae8c448))
+
+
+
+### [0.16.6](https://github.com/botfront/botfront/compare/v0.16.5...v0.16.6) (2019-10-25)
+
+
+
+### [0.16.5](https://github.com/botfront/botfront/compare/v0.16.4...v0.16.5) (2019-10-25)
+
+
+### Bug Fixes
+
+* potential fix for the story exceptions ([46275e4](https://github.com/botfront/botfront/commit/46275e4))
+* potential fix for the story group test not passing ([ce2414a](https://github.com/botfront/botfront/commit/ce2414a))
+* removes popup presence checking ([ea5c4fd](https://github.com/botfront/botfront/commit/ea5c4fd))
+* test destination story warning ([627eda1](https://github.com/botfront/botfront/commit/627eda1))
+
+
+### Features
+
+* widen the story name input field ([d037702](https://github.com/botfront/botfront/commit/d037702))
+
+
+### Tests
+
+* story exceptions fixes ([17e99c6](https://github.com/botfront/botfront/commit/17e99c6))
+* storygroups test fixes ([#289](https://github.com/botfront/botfront/issues/289)) ([5d56479](https://github.com/botfront/botfront/commit/5d56479))
+* udpated github action ([0e4d0d4](https://github.com/botfront/botfront/commit/0e4d0d4))
+
+
+
+### [0.16.4](https://github.com/botfront/botfront/compare/v0.16.3-rc.1...v0.16.4) (2019-10-23)
+
+
+
+### [0.16.4](https://github.com/botfront/botfront/compare/v0.16.3-rc.1...v0.16.4) (2019-10-22)
+
+
+
 ### [0.16.3-rc.1](https://github.com/botfront/botfront/compare/v0.16.3...v0.16.3-rc.1) (2019-10-20)
 
 
